@@ -3,7 +3,7 @@ const fs = require('fs');
 const { GoogleGenAI, Type } = require('@google/genai');
 
 // 2026年最新SDKの仕様に基づき初期化
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function main() {
   const taskInfo = JSON.parse(fs.readFileSync('./task_info.json', 'utf8'));

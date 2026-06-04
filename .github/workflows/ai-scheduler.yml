@@ -27,13 +27,16 @@ jobs:
         with:
           node-version: 20
 
-      # 3. パッケージマネージャー(pnpm)のインストールと依存関係の解決
+      # 3. パッケージマネージャー(pnpm)のインストールとTypeScript実行環境の解決
       - name: Install Dependencies
         run: |
           npm install -g pnpm
           
           # AIの実行に必要なGoogle公式の最新GenAIライブラリを直接インストール
           npm install @google/genai
+          
+          # Node.js上でTypeScriptファイルを直接・高速に実行できる「tsx」をグローバル導入
+          npm install -g tsx
           
           # 既存の package.json がある場合は、プロジェクトの依存関係もインストール
           if [ -f "package.json" ]; then
@@ -66,11 +69,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/gemini-coder.js
 
-      # 7. 【条件分岐】自動テストの実行 ＆ エラー時の自律修正ループ（最大3回リトライ）
-      - name: Execute Tests and Self-Healing Loop
+      # 7. 【条件分岐】自動テスト ＆ コーディングルールチェック ＆ 自律修正ループ（最大3回リトライ）
+      - name: Execute Lint, Tests and Self-Healing Loop
         if: env.TASK_ID != ''
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CI: true # VitestをCIモードで確実に終了させるためのフラグ
         run: |
           attempt=0
           max_attempts=3
@@ -78,28 +82,38 @@ jobs:
 
           until [ $attempt -ge $max_attempts ]
           do
-            echo "🧪 テストを実行中... (試行 $(($attempt+1))/$max_attempts)"
+            echo "🧪 規約チェック（Lint）および単体テストを実行中... (試行 $(($attempt+1))/$max_attempts)"
             
-            # テストを実行し、同時にエラー出力を test_result.log に保存
-            if pnpm test > test_result.log 2>&1; then
-              echo "✅ テストが正常にパスしました！"
+            # 💡 最初にESLintによるルールチェックを実行（結果をログファイルに初期書き込み）
+            echo "🧹 コーディングルール（Lint）検証中..."
+            pnpm lint > test_result.log 2>&1
+            lint_status=$?
+
+            # 💡 次にVitestによる自動テストを実行（結果をログファイルに追加追記）
+            echo "🧪 単体テスト（Vitest）実行中..."
+            pnpm test >> test_result.log 2>&1
+            test_status=$?
+
+            # LintとTestのどちらも成功（ステータスコードが共に0）ならループをクリア
+            if [ $lint_status -eq 0 ] && [ $test_status -eq 0 ]; then
+              echo "✅ コーディングルールおよびテストを全てクリアしました！"
               cat test_result.log
               success=true
               break
             fi
 
-            echo "❌ テストが失敗しました。エラーログはこちら:"
+            echo "❌ 規約違反またはテスト失敗を検知しました。エラーログはこちら:"
             cat test_result.log
             
             attempt=$(($attempt+1))
             if [ $attempt -lt $max_attempts ]; then
-              echo "🤖 Geminiにエラーログを送信してコードを自律修正させます..."
+              echo "🤖 Geminiにエラーログ（Lint/Test）を送信して自律修正させます..."
               node scripts/gemini-fixer.js
             fi
           done
 
           if [ "$success" = false ]; then
-            echo "🚨 最大リトライ回数に達しましたが、テストをパスできませんでした。処理を中断します。"
+            echo "🚨 ルール違反またはテスト失敗が3回以内に修正されませんでした。処理を中断します。"
             exit 1
           fi
 
@@ -110,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git add .
-          git commit -m "feat($TASK_ID): Geminiによるコードおよびテストの自動生成（テスト通過済み）"
+          git commit -m "feat($TASK_ID): GeminiによるTypeScriptコードおよびテストの自動生成（テスト通過済み）"
           
           # リモートリポジトリへプッシュ
           git push -u origin feature/$TASK_ID --force
@@ -118,7 +132,7 @@ jobs:
           # GitHub CLI を使ってプルリクエストを作成
           gh pr create \
             --title "【Gemini自動生成】$TASK_ID" \
-            --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。テストは正常に通過しています。目視レビューをお願いします。" \
+            --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。規約チェック（Lint）およびVitestテストは正常に通過しています。目視レビューをお願いします。" \
             --base main \
             --head feature/$TASK_ID
 

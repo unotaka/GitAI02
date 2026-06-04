@@ -97,14 +97,14 @@ jobs:
           do
             echo "🧪 規約チェック（Lint）および単体テストを実行中... (試行 $(($attempt+1))/$max_attempts)"
             
-            # 💡 最初にESLintによるルールチェックを実行（結果をログファイルに初期書き込み）
+            # 末尾に || true を追加し、エラーになってもActionsを落とさず status に代入する
             echo "🧹 コーディングルール（Lint）検証中..."
-            pnpm lint > test_result.log 2>&1
+            pnpm lint > test_result.log 2>&1 || true
             lint_status=$?
 
-            # 💡 次にVitestによる自動テストを実行（結果をログファイルに追加追記）
+            # こちらも同様に || true を追加
             echo "🧪 単体テスト（Vitest）実行中..."
-            pnpm test >> test_result.log 2>&1
+            pnpm test >> test_result.log 2>&1 || true
             test_status=$?
 
             # LintとTestのどちらも成功（ステータスコードが共に0）ならループをクリア

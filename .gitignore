@@ -1,0 +1,6 @@
+# 💡 不要な外部ライブラリや一時ファイルをGitの管理から完全に除外する
+node_modules/
+.next/
+*.log
+task_info.json
+pnpm-lock.yaml

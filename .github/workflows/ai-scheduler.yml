@@ -1,0 +1,147 @@
+name: AI Notion Monitor & Developer Loop (Manual Trigger)
+
+# 💡 手動実行（GitHub画面のボタン）のみをトリガーに設定
+on:
+  workflow_dispatch: 
+
+# ワークフローがリポジトリへの書き込みやPR作成、認証を行えるよう権限を定義
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  ai-development-flow:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. コードのチェックアウト
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # すべての分岐履歴を取得（自律ブランチ作成に必要）
+
+      # 2. Node.js 環境のセットアップ
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 3. パッケージマネージャー(pnpm)のインストールと依存関係の解決
+      - name: Install Dependencies
+        run: |
+          npm install -g pnpm
+          
+          # AIの実行に必要なGoogle公式の最新GenAIライブラリを直接インストール
+          npm install @google/genai
+          
+          # 既存の package.json がある場合は、プロジェクトの依存関係もインストール
+          if [ -f "package.json" ]; then
+            pnpm install
+          else
+            echo "🎵 package.json が直下にないため、個別インストールのみで進行します"
+          fi
+
+      # 4. Notionに「Claude生成待ち」のタスクがないかチェック（1件取得して task_info.json を作成）
+      - name: Check Notion Database
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: node scripts/cron-scheduler.js
+
+      # 5. 【条件分岐】タスクがある場合のみ、専用のGitブランチを作成
+      - name: Create Feature Branch
+        if: env.TASK_ID != ''
+        run: |
+          git config --global user.name "Gemini Developer Bot"
+          git config --global user.email "gemini-bot@yourdomain.local"
+          
+          # 新しい開発用ブランチを作成して切り替え
+          git checkout -b feature/$TASK_ID
+
+      # 6. 【条件分岐】Geminiによるソースコード・テストコードの自動生成
+      - name: Run Gemini Coder
+        if: env.TASK_ID != ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/gemini-coder.js
+
+      # 7. 【条件分岐】自動テストの実行 ＆ エラー時の自律修正ループ（最大3回リトライ）
+      - name: Execute Tests and Self-Healing Loop
+        if: env.TASK_ID != ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          attempt=0
+          max_attempts=3
+          success=false
+
+          until [ $attempt -ge $max_attempts ]
+          do
+            echo "🧪 テストを実行中... (試行 $(($attempt+1))/$max_attempts)"
+            
+            # テストを実行し、同時にエラー出力を test_result.log に保存
+            if pnpm test > test_result.log 2>&1; then
+              echo "✅ テストが正常にパスしました！"
+              cat test_result.log
+              success=true
+              break
+            fi
+
+            echo "❌ テストが失敗しました。エラーログはこちら:"
+            cat test_result.log
+            
+            attempt=$(($attempt+1))
+            if [ $attempt -lt $max_attempts ]; then
+              echo "🤖 Geminiにエラーログを送信してコードを自律修正させます..."
+              node scripts/gemini-fixer.js
+            fi
+          done
+
+          if [ "$success" = false ]; then
+            echo "🚨 最大リトライ回数に達しましたが、テストをパスできませんでした。処理を中断します。"
+            exit 1
+          fi
+
+      # 8. 【条件分岐】成果物をプッシュし、GitHub上でプルリクエスト(PR)を自動作成
+      - name: Push Code and Create Pull Request
+        if: env.TASK_ID != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git add .
+          git commit -m "feat($TASK_ID): Geminiによるコードおよびテストの自動生成（テスト通過済み）"
+          
+          # リモートリポジトリへプッシュ
+          git push -u origin feature/$TASK_ID --force
+          
+          # GitHub CLI を使ってプルリクエストを作成
+          gh pr create \
+            --title "【Gemini自動生成】$TASK_ID" \
+            --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。テストは正常に通過しています。目視レビューをお願いします。" \
+            --base main \
+            --head feature/$TASK_ID
+
+      # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを「Git格納済み」に更新
+      - name: Update Notion Status to Git Stored
+        if: env.TASK_ID != ''
+        run: |
+          PAGE_ID=$(node -e "console.log(require('./task_info.json').PAGE_ID)")
+          
+          echo "📝 Notionのタスク（ページID: $PAGE_ID）を『Git格納済み』に更新中..."
+          
+          curl -X PATCH "https://api.notion.com/v1/pages/$PAGE_ID" \
+            -H "Authorization: Bearer ${{ secrets.NOTION_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -H "Notion-Version: 2022-06-28" \
+            --data '{
+              "properties": {
+                "ステータス": {
+                  "status": {
+                    "name": "Git格納済み"
+                  }
+                }
+              }
+            }'
+          
+          echo "🎉 すべての自動化プロセスが正常に完了しました！"

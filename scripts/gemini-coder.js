@@ -2,8 +2,8 @@
 const fs = require('fs');
 const { GoogleGenAI, Type } = require('@google/genai');
 
-// 2026年最新SDKの仕様に基づき初期化
-const ai = GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// 💡 修正点：大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function main() {
   // 1. Notionから落としてきたタスク情報を読み込む
@@ -26,7 +26,6 @@ async function main() {
     model: 'gemini-2.5-flash',
     contents: prompt,
     config: {
-      // 💡 AIにテックリードとしてのペルソナと規約を叩き込む
       systemInstruction: `
       あなたは厳格なフロントエンドテックリードです。
       生成するTypeScriptコードは、以下の【絶対厳守コーディングルール】に必ず従ってください。
@@ -45,7 +44,6 @@ async function main() {
          - 外部コンポーネントやユーティリティをインポートする際は、相対パス（../../）ではなく、必ずパスエイリアス（@/components/...）を使用すること。
       `,
       responseMimeType: 'application/json',
-      // 💡 出力構造をJSONに100%固定し、Markdownの枠（\`\`\`json等）の混入を防ぐ
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -66,7 +64,6 @@ async function main() {
   // 4. 返ってきたJSONをパースしてファイルに書き出す
   const result = JSON.parse(response.text.trim());
   
-  // ディレクトリがなければ作成（コンポーネント用の共通配置場所）
   const targetDir = 'src/components';
   fs.mkdirSync(targetDir, { recursive: true });
 

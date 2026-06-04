@@ -2,14 +2,13 @@
 const fs = require('fs');
 const { GoogleGenAI, Type } = require('@google/genai');
 
-// 2026年最新SDKの仕様に基づき初期化
-const ai = GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// 💡 修正点：こちらも同様に「new」をしっかりと付与します
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function main() {
   const taskInfo = JSON.parse(fs.readFileSync('./task_info.json', 'utf8'));
   const taskId = taskInfo.TASK_ID;
 
-  // 💡 パスを src/components に統一して読み込み
   const targetDir = 'src/components';
   const sourcePath = `${targetDir}/${taskId}.tsx`;
   const testPath = `${targetDir}/${taskId}.test.tsx`;
@@ -19,17 +18,14 @@ async function main() {
     process.exit(1);
   }
 
-  // 現在のソース、テスト、そして失敗したエラーログ（Lint または Test の結果）を読み込む
   const currentSource = fs.readFileSync(sourcePath, 'utf8');
   const currentTest = fs.readFileSync(testPath, 'utf8');
   const errorLog = fs.readFileSync('./test_result.log', 'utf8');
 
   console.log(`🤖 タスク [${taskId}] のエラーを検知しました。Geminiによる自律修正を開始します...`);
 
-  // エラーログが長すぎる場合は直近の120行にトリミング（コンテキストの最適化）
   const trimmedLog = errorLog.split('\n').slice(-120).join('\n');
 
-  // 💡 コーディングルールを再提示し、エラーログの分析を指示するプロンプト
   const prompt = `
   あなたが生成したコードにおいて、コーディングルールチェック（ESLint）または自動テスト（Vitest）が失敗しました。
   以下の【エラーログ】を徹底的に分析し、【現在のソースコード】または【現在のテストコード】のバグを修正してください。
@@ -44,12 +40,10 @@ async function main() {
   ${trimmedLog}
   `;
 
-  // Gemini APIの呼び出し（システム指示とスキーマによる修正ルールの固定）
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
     config: {
-      // 💡 修正時にも絶対にコーディングルールを外さないようテックリードの規約を注入
       systemInstruction: `
       あなたは厳格なフロントエンドテックリードです。
       提示されたエラーログ（Lintエラー、またはテストフェイル）を完璧に修正したTypeScriptコードを出力してください。
@@ -63,7 +57,6 @@ async function main() {
       5. エラーの原因が「テストコード側の不備」である場合は、テストコード側を適切に修正すること。
       `,
       responseMimeType: 'application/json',
-      // 💡 responseSchema で構造を完全固定し、パースエラーを防止
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -73,7 +66,7 @@ async function main() {
           },
           testCode: {
             type: Type.STRING,
-            description: "修正・最適化を施した Vitest のテストコード。不必要なエラーを起こさないよう、テストロジックを見直すこと。"
+            description: "修正・最適化を施した Vitest のテストコード。不必要なエラーを起こさないよう、テストロジックを見見直すこと。"
           }
         },
         required: ["sourceCode", "testCode"]
@@ -81,10 +74,8 @@ async function main() {
     }
   });
 
-  // 返ってきたJSONを安全にパース
   const result = JSON.parse(response.text.trim());
 
-  // 💡 ファイルを上書き（これでGitHub Actionsの次のループで再検証される）
   fs.writeFileSync(sourcePath, result.sourceCode, 'utf8');
   fs.writeFileSync(testPath, result.testCode, 'utf8');
 

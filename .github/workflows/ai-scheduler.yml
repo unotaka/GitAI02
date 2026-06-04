@@ -44,6 +44,15 @@ jobs:
           else
             echo "🎵 package.json が直下にないため、個別インストールのみで進行します"
           fi
+          
+          # Next.jsのインストール状態とバージョン情報をログに出力して確認する
+          echo "🔍 GitHub Actions上のNext.js環境を確認中..."
+          if [ -f "node_modules/.bin/next" ]; then
+            pnpm next info
+          else
+            echo "⚠️ 警告: node_modules 内に Next.js の実体（バイナリ）が見つかりません！"
+            echo "プロジェクトのルートに package.json が存在し、next がインストールされているか確認してください。"
+          fi
 
       # 4. Notionに「Claude生成待ち」のタスクがないかチェック（1件取得して task_info.json を作成）
       - name: Check Notion Database
@@ -76,6 +85,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CI: true # VitestをCIモードで確実に終了させるためのフラグ
         run: |
+          # 💡 【追加】ESLintプラグインやNext.jsのベースキャッシュを安全に初期化・生成する
+          echo "🏗️ Next.jsのLint環境を初期化中..."
+          pnpm next info || echo "Proceeding..."
+          
           attempt=0
           max_attempts=3
           success=false

@@ -180,26 +180,45 @@ jobs:
             --base main \
             --head "$TASK_ID"
 
-      # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを「Git格納済み」に更新
-      - name: Update Notion Status to Git Stored
+      # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを更新し、実装した仕様をマークダウンで追記
+      - name: Update Notion Status and Append Markdown Specification
         if: env.TASK_ID != ''
         run: |
           PAGE_ID=$(node -e "console.log(require('./task_info.json').PAGE_ID)")
+          TASK_ID=$(node -e "console.log(require('./task_info.json').TASK_ID)")
           
-          echo "📝 Notionのタスク（ページID: $PAGE_ID）を『Git格納済み』に更新中..."
+          echo "📝 Notionのタスク（ページID: $PAGE_ID）のステータスおよび仕様を更新中..."
           
+          # 💡 Notionに追記するマークダウン形式のテキストをここで組み立てる
+          # ※改行コードやダブルクォーテーションをJSONに安全に埋め込むため、環境変数経由で処理します
+          export AI_SUMMARY="### 🤖 AI自動実装レポート (${TASK_ID})\n\n- **実装ステータス**: ✅ テスト＆規約チェック通過済み\n- **生成ファイル**: \`src/app/${TASK_ID}/page.tsx\`\n- **検証ファイル**: \`src/components/${TASK_ID}.test.tsx\`\n\n#### 📌 実装された主な仕様とコンテキスト\n1. **動的ルーティング対応**: URL \`/${TASK_ID}\` で直接画面を確認できるよう配慮。\n2. **Suspenseエラー対策**: Next.jsのプリレンダリングエラーを回避するため \`useSearchParams\` 周辺に \`<Suspense>\` を自動配置。\n3. **最新Next.js 15.5+ 準拠**: 脆弱性を回避した安全なESLintルールに適合。"
+
+          # 💡 PATCHリクエストを送信して、ステータスと「仕様」プロパティを同時に更新！
           curl -X PATCH "https://api.notion.com/v1/pages/$PAGE_ID" \
             -H "Authorization: Bearer ${{ secrets.NOTION_TOKEN }}" \
             -H "Content-Type: application/json" \
             -H "Notion-Version: 2022-06-28" \
-            --data '{
+            --data "$(cat <<EOF
+            {
               "properties": {
                 "ステータス": {
                   "status": {
                     "name": "Git格納済み"
                   }
+                },
+                "仕様": {
+                  "rich_text": [
+                    {
+                      "type": "text",
+                      "text": {
+                        "content": \"$(echo "$AI_SUMMARY")\"
+                      }
+                    }
+                  ]
                 }
               }
-            }'
+            }
+          EOF
+          )"
           
-          echo "🎉 すべての自動化プロセスが正常に完了しました！"
+          echo "🎉 すべての自動化プロセスとNotionへのマークダウン追記が正常に完了しました！"

@@ -37,9 +37,6 @@ jobs:
         run: |
           npm install -g pnpm
           
-          # pnpmに対して、CI環境でのスクリプト実行をグローバルに許可する設定を先に入れる
-          pnpm config set only-allow-trusted-deps false
-          
           # AIの実行に必要なGoogle公式の最新GenAIライブラリを直接インストール
           npm install @google/genai
           

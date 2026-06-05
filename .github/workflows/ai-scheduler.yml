@@ -4,6 +4,10 @@ name: AI Notion Monitor & Developer Loop (Manual Trigger)
 on:
   workflow_dispatch: 
 
+# 💡 【新規追加】GitHub全体のNode.js 20廃止に伴い、実行基盤をNode.js 24に一足早く強制オプトインして警告を消す
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 # ワークフローがリポジトリへの書き込みやPR作成、認証を行えるよう権限を定義
 permissions:
   contents: write
@@ -22,10 +26,11 @@ jobs:
           fetch-depth: 0 # すべての分岐履歴を取得（自律ブランチ作成やmainの解析に必要）
 
       # 2. Node.js 環境のセットアップ
+      # 💡 修正点: ランナーに合わせて開発環境も Node.js 24 にアップデート
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       # 3. パッケージマネージャー(pnpm)のインストールとTypeScript実行環境の解決
       - name: Install Dependencies
@@ -70,8 +75,7 @@ jobs:
             echo "処理対象のタスクはありませんでした。"
           fi
 
-      # 4.5. 【新規追加】メインブランチ（main）の既存コード構造と中身をスキャンして一時保存
-      # 💡 目的: 新しくブランチを切り替える前に、現在の main ブランチのソースコードの文脈をキャプチャする
+      # 4.5. メインブランチ（main）の既存コード構造と中身をスキャンして一時保存
       - name: Capture Main Branch Context
         if: env.TASK_ID != ''
         run: |
@@ -92,7 +96,6 @@ jobs:
           cat package.json >> main_context.txt
 
       # 5. 【条件分岐】タスクがある場合のみ、専用のGitブランチを作成
-      # 💡 ブランチ名称は、かんばんのプロパティ『タスクID』そのもの
       - name: Create Feature Branch
         if: env.TASK_ID != ''
         run: |
@@ -103,7 +106,6 @@ jobs:
           git checkout -b "$TASK_ID"
 
       # 6. 【条件分岐】Geminiによるソースコード・テストコードの自動生成
-      # 💡 修正点: 先ほど作った「main_context.txt」が存在する環境で gemini-coder.js を実行
       - name: Run Gemini Coder
         if: env.TASK_ID != ''
         env:

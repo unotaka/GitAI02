@@ -42,20 +42,42 @@ async function checkNotionDatabase() {
   // 対象のタスクがない場合
   if (!data.results || data.results.length === 0) {
     console.log('🎵 「Claude生成待ち」のタスクは見つかりませんでした。ワークフローを終了します。');
-    // 後続のステップが動かないよう、TASK_ID を空のまま終了
     return;
   }
 
   const page = data.results[0];
   const pageId = page.id;
 
-  // --- Notionから各種プロパティ（タイトル・仕様）を抽出 ---
-  // 1. タスクID（Notionのタイトルプロパティを想定。例：「task-001」などの文字列）
-  const titleProperty = page.properties['名前'] || page.properties['Name'] || {};
-  const taskId = titleProperty.title?.[0]?.plain_text || `task-${Date.now()}`;
+  // --- Notionから各種プロパティ（タスクID・仕様）を抽出 ---
 
-  // 2. 仕様（Notionのテキスト、またはリッチテキストプロパティ。ここでは「仕様」という名前のテキストプロパティを想定）
-  // ※もしプロパティ名が違う場合は、ご自身のNotionに合わせて「仕様」の部分を書き換えてください。
+  // 💡 【大修正】Notionの『タスクID』プロパティ（AI02-3など）を直接取得する
+  const idProperty = page.properties['タスクID'] || {};
+  let taskId = "";
+
+  // Notionのテキストプロパティ（rich_text）から文字を安全に抽出
+  if (idProperty.rich_text && idProperty.rich_text.length > 0) {
+    taskId = idProperty.rich_text[0].plain_text.trim();
+  }
+
+  // 💡 【安全弁】万が一「タスクID」のプロパティがNotion側で空っぽだった場合のフォールバック
+  if (!taskId) {
+    const titleProperty = page.properties['名前'] || page.properties['Name'] || {};
+    const pageTitle = titleProperty.title?.[0]?.plain_text || '';
+    
+    if (pageTitle) {
+      // タイトルが取れればそれを使用
+      taskId = pageTitle.trim();
+    } else {
+      // 最終手段としてタイムスタンプ
+      taskId = `task-${Date.now()}`;
+    }
+    console.log(`⚠️ Notionの「タスクID」プロパティが空だったため、代替IDを設定しました: ${taskId}`);
+  }
+
+  // 💡 Gitブランチ名として悪影響が出ないよう、空白や禁止文字を排除するクリーンアップ
+  taskId = taskId.replace(/[^a-zA-Z0-9-_]/g, '');
+
+  // 2. 仕様（Notionのテキスト、またはリッチテキストプロパティ）
   const descProperty = page.properties['仕様'] || {};
   const description = descProperty.rich_text?.[0]?.plain_text || '仕様が記載されていません。';
 
@@ -72,8 +94,6 @@ async function checkNotionDatabase() {
   console.log('💾 task_info.json を正常に保存しました。');
 
   // 4. GitHub Actionsの「環境変数」として TASK_ID を登録する
-  // 💡 GitHub Actionsの仕様上、GITHUB_ENV という特殊なファイルに書き込むことで、
-  // 以降のステップ（if: env.TASK_ID != ''）が正常に機能するようになります。
   if (process.env.GITHUB_ENV) {
     fs.appendFileSync(process.env.GITHUB_ENV, `TASK_ID=${taskId}\n`, 'utf8');
     console.log(`🚀 GITHUB_ENV に TASK_ID=${taskId} を登録しました。`);

@@ -50,13 +50,31 @@ async function checkNotionDatabase() {
 
   // --- Notionから各種プロパティ（タスクID・仕様）を抽出 ---
 
-  // 💡 【大修正】Notionの『タスクID』プロパティ（AI02-3など）を直接取得する
+  // 💡 【超強化マージ】Notionの『タスクID』がどんな性質（型）であっても100%文字を引っこ抜く
   const idProperty = page.properties['タスクID'] || {};
   let taskId = "";
 
-  // Notionのテキストプロパティ（rich_text）から文字を安全に抽出
-  if (idProperty.rich_text && idProperty.rich_text.length > 0) {
-    taskId = idProperty.rich_text[0].plain_text.trim();
+  if (idProperty.type === 'rich_text' && idProperty.rich_text?.length > 0) {
+    // 1. 手動入力のテキスト型の場合
+    taskId = idProperty.rich_text[0].plain_text;
+  } else if (idProperty.type === 'unique_id' && idProperty.unique_id) {
+    // 2. Notion公式の「ID」型（自動発番）の場合（接頭辞 + 番号を結合）
+    const prefix = idProperty.unique_id.prefix ? idProperty.unique_id.prefix + '-' : '';
+    taskId = prefix + idProperty.unique_id.number;
+  } else if (idProperty.type === 'formula' && idProperty.formula) {
+    // 3. 他の文字を結合している関数（Formula）型の場合
+    taskId = idProperty.formula.string || idProperty.formula.number?.toString() || "";
+  } else if (idProperty.type === 'number' && idProperty.number !== undefined) {
+    // 4. 単純な数値型の場合
+    taskId = idProperty.number.toString();
+  } else if (idProperty.type === 'title' && idProperty.title?.length > 0) {
+    // 5. 万が一タイトル（名前）属性に指定されていた場合
+    taskId = idProperty.title[0].plain_text;
+  }
+
+  // 前後の余計な空白を綺麗にカット
+  if (taskId) {
+    taskId = taskId.trim();
   }
 
   // 💡 【安全弁】万が一「タスクID」のプロパティがNotion側で空っぽだった場合のフォールバック

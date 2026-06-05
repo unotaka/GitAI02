@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # すべての分岐履歴を取得（自律ブランチ作成に必要）
+          fetch-depth: 0 # すべての分岐履歴を取得（自律ブランチ作成やmainの解析に必要）
 
       # 2. Node.js 環境のセットアップ
       - name: Setup Node.js
@@ -56,22 +56,54 @@ jobs:
 
       # 4. Notionに「Claude生成待ち」のタスクがないかチェック（1件取得して task_info.json を作成）
       - name: Check Notion Database
+        id: check_notion
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-        run: node scripts/cron-scheduler.js
+        run: |
+          node scripts/cron-scheduler.js
+          if [ -f "task_info.json" ]; then
+            TASK_ID=$(node -e "console.log(require('./task_info.json').TASK_ID)")
+            echo "TASK_ID=$TASK_ID" >> $GITHUB_ENV
+            echo "検出されたタスクID: $TASK_ID"
+          else
+            echo "処理対象のタスクはありませんでした。"
+          fi
+
+      # 4.5. 【新規追加】メインブランチ（main）の既存コード構造と中身をスキャンして一時保存
+      # 💡 目的: 新しくブランチを切り替える前に、現在の main ブランチのソースコードの文脈をキャプチャする
+      - name: Capture Main Branch Context
+        if: env.TASK_ID != ''
+        run: |
+          echo "📂 メインブランチ（main）の既存ソースコードを確認中..."
+          echo "=== 既存のファイル構成 ===" > main_context.txt
+          
+          # node_modulesや.git、.nextを除外して、主要なソースコード（srcなど）の構造をリスト化
+          find src -maxdepth 5 -not -path '*/.*' >> main_context.txt || echo "src directory empty yet" >> main_context.txt
+          
+          echo -e "\n=== 主要なファイルのソースコード ===" >> main_context.txt
+          # 既存の画面コンポーネント（.tsx, .ts）があれば、その中身をすべて1つのテキストファイルにマージする
+          if [ -d "src/app" ]; then
+            find src/app \( -name "*.tsx" -o -name "*.ts" \) | xargs -I {} sh -c 'echo "--- File: {} ---" >> main_context.txt; cat {} >> main_context.txt'
+          fi
+          
+          # 既存の共通設定ファイルもコンテキストとして結合
+          echo "--- File: package.json ---" >> main_context.txt
+          cat package.json >> main_context.txt
 
       # 5. 【条件分岐】タスクがある場合のみ、専用のGitブランチを作成
+      # 💡 ブランチ名称は、かんばんのプロパティ『タスクID』そのもの
       - name: Create Feature Branch
         if: env.TASK_ID != ''
         run: |
           git config --global user.name "Gemini Developer Bot"
           git config --global user.email "gemini-bot@yourdomain.local"
           
-          # 新しい開発用ブランチを作成して切り替え
-          git checkout -b feature/$TASK_ID
+          # タスクIDそのものをブランチ名にして切り替え
+          git checkout -b "$TASK_ID"
 
       # 6. 【条件分岐】Geminiによるソースコード・テストコードの自動生成
+      # 💡 修正点: 先ほど作った「main_context.txt」が存在する環境で gemini-coder.js を実行
       - name: Run Gemini Coder
         if: env.TASK_ID != ''
         env:
@@ -85,7 +117,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CI: true # VitestをCIモードで確実に終了させるためのフラグ
         run: |
-          # 💡 【追加】ESLintプラグインやNext.jsのベースキャッシュを安全に初期化・生成する
           echo "🏗️ Next.jsのLint環境を初期化中..."
           pnpm next info || echo "Proceeding..."
           
@@ -97,17 +128,14 @@ jobs:
           do
             echo "🧪 規約チェック（Lint）および単体テストを実行中... (試行 $(($attempt+1))/$max_attempts)"
             
-            # 末尾に || true を追加し、エラーになってもActionsを落とさず status に代入する
             echo "🧹 コーディングルール（Lint）検証中..."
             pnpm lint > test_result.log 2>&1 || true
             lint_status=$?
 
-            # こちらも同様に || true を追加
             echo "🧪 単体テスト（Vitest）実行中..."
             pnpm test >> test_result.log 2>&1 || true
             test_status=$?
 
-            # LintとTestのどちらも成功（ステータスコードが共に0）ならループをクリア
             if [ $lint_status -eq 0 ] && [ $test_status -eq 0 ]; then
               echo "✅ コーディングルールおよびテストを全てクリアしました！"
               cat test_result.log
@@ -139,15 +167,15 @@ jobs:
           git add .
           git commit -m "feat($TASK_ID): GeminiによるTypeScriptコードおよびテストの自動生成（テスト通過済み）"
           
-          # リモートリポジトリへプッシュ
-          git push -u origin feature/$TASK_ID --force
+          # リモートへタスクID名でプッシュ
+          git push -u origin "$TASK_ID" --force
           
           # GitHub CLI を使ってプルリクエストを作成
           gh pr create \
             --title "【Gemini自動生成】$TASK_ID" \
             --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。規約チェック（Lint）およびVitestテストは正常に通過しています。目視レビューをお願いします。" \
             --base main \
-            --head feature/$TASK_ID
+            --head "$TASK_ID"
 
       # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを「Git格納済み」に更新
       - name: Update Notion Status to Git Stored

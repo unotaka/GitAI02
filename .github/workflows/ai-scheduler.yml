@@ -37,6 +37,9 @@ jobs:
         run: |
           npm install -g pnpm
           
+          # pnpmに対して、CI環境でのスクリプト実行をグローバルに許可する設定を先に入れる
+          pnpm config set only-allow-trusted-deps false
+          
           # AIの実行に必要なGoogle公式の最新GenAIライブラリを直接インストール
           npm install @google/genai
           
@@ -45,7 +48,7 @@ jobs:
           
           # 既存の package.json がある場合は、プロジェクトの依存関係もインストール
           if [ -f "package.json" ]; then
-            pnpm install --no-frozen-lockfile --allow-build
+            pnpm install --no-frozen-lockfile
           else
             echo "🎵 package.json が直下にないため、個別インストールのみで進行します"
           fi

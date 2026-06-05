@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path'); // 💡 パス操作を安全に行うために追加
 const { GoogleGenAI, Type } = require('@google/genai');
 
-// 💡 修正点：大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
+// 💡 大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function main() {
@@ -56,17 +56,17 @@ ${requirement}
          - 提供された「既存のメインブランチのコード状況」を壊したり、同様の機能を二重実装したりしないこと。
          - プロジェクト全体のデザインや設定（package.jsonに記載されたライブラリ等）と完全に調和させること。
       2. 命名規則:
-         - コンポーネント名、ファイル名は必ず「PascalCase」（例: UserProfile）とする。
+         - 今回生成するファイルはNext.jsのページ用（page.tsx）となるため、コンポーネント関数名は必ず「PascalCase」（例: export default function TaskPage()）で記述すること。
          - 関数、変数、プロパティ名は「camelCase」（例: getUserData）とする。
       3. 型定義（TypeScript）:
          - 「any」型の使用は一切禁止する。必ず厳格にインターフェース（interface）や型（type）を定義すること。
-         - Next.jsのコンポーネントには「React.FC」は使用せず、通常の関数宣言型（export function Component() {}）で記述すること。
+         - Next.jsのコンポーネントには「React.FC」は使用せず、通常の関数宣言型（export default function Page() {}）で記述すること。
       4. UI・スタイリング:
          - スタイリングには必ず Tailwind CSS のクラスのみを使用すること。インラインスタイル（style={{...}}）は禁止。
          - レスポンシブ対応（md:, lg:）を意識したレイアウトにすること。
       5. ディレクトリ構成・インポート:
          - 外部コンポーネントやユーティリティをインポートする際は、相対パス（../../）ではなく、必ずパスエイリアス（@/components/...）を使用すること。
-         - クライアントサイドの挙動（useStateやuseEffect等）が含まれる場合は、必ずファイルの先頭に '"use client";' を付与すること。
+         - このファイルは直接ブラウザから閲覧されるページとなるため、最上部に必ず '"use client";' を付与してクライアントコンポーネントとして動作させること。
       `,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -74,7 +74,7 @@ ${requirement}
         properties: {
           sourceCode: {
             type: Type.STRING,
-            description: "Next.js (App Router) のTypeScriptコード（.tsx）。上記のコーディングルールをすべて満たしていること。"
+            description: "Next.js (App Router) のページ用TypeScriptコード。最上部に '\"use client\";' が含まれ、export default function を持つこと。"
           },
           testCode: {
             type: Type.STRING,
@@ -89,18 +89,25 @@ ${requirement}
   // 4. 返ってきたJSONをパースしてファイルに書き出す
   const result = JSON.parse(response.text.trim());
   
-  const targetDir = 'src/components';
+  // 💡 【修正点】直接ブラウザのURLからアクセスできるように、保存先をルーティング（src/app/[taskId]）に変更
+  const pageDir = path.join('src/app', taskId);
+  const testDir = 'src/components'; // テストファイルは管理しやすいよう従来のコンポーネント層に集約
+
   // ディレクトリが存在しない場合は自動作成
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
+  if (!fs.existsSync(pageDir)) {
+    fs.mkdirSync(pageDir, { recursive: true });
+  }
+  if (!fs.existsSync(testDir)) {
+    fs.mkdirSync(testDir, { recursive: true });
   }
 
-  fs.writeFileSync(`${targetDir}/${taskId}.tsx`, result.sourceCode, 'utf8');
-  fs.writeFileSync(`${targetDir}/${taskId}.test.tsx`, result.testCode, 'utf8');
+  // 💡 ファイル名を page.tsx にすることで、/AI02-1 や /AI02-3 で直接アクセス可能になります
+  fs.writeFileSync(path.join(pageDir, 'page.tsx'), result.sourceCode, 'utf8');
+  fs.writeFileSync(path.join(testDir, `${taskId}.test.tsx`), result.testCode, 'utf8');
 
-  console.log(`✅ コーディングルールに準拠したソースコードとテストコードの生成が完了しました！`);
-  console.log(`📂 生成先: ${targetDir}/${taskId}.tsx`);
-  console.log(`📂 生成先: ${targetDir}/${taskId}.test.tsx`);
+  console.log(`✅ コーディングルールに準拠した独立個別ページの生成が完了しました！`);
+  console.log(`📂 画面ページ生成先: ${pageDir}/page.tsx`);
+  console.log(`📂 テストコード生成先: ${testDir}/${taskId}.test.tsx`);
 }
 
 main().catch((err) => {

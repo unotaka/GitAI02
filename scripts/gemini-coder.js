@@ -45,7 +45,7 @@ ${requirement}
 
   console.log("🧠 Gemini にプロンプトを送信中...（思考中）");
 
-  // 3. 💡【堅牢化マージ】API高負荷（503エラー等）対策のリトライループを実装
+  // 3. API高負荷（503エラー等）対策のリトライループを実装
   let response;
   let maxRetries = 3;
   let attempt = 0;
@@ -76,8 +76,8 @@ ${requirement}
           5. ディレクトリ構成・インポート:
              - 外部コンポーネントやユーティリティをインポートする際は、相対パス（../../）ではなく、必ずパスエイリアス（@/components/...）を使用すること。
              - このファイルは直接ブラウザから閲覧されるページとなるため、最上部に必ず '"use client";' を付与してクライアントコンポーネントとして動作させること。
-             - ソースコードおよびテストコード内において、Node.jsスタイルの「require()」によるインポートは一切禁止とする。外部モジュールやライブラリの読み込みは、必ずTypeScript標準の「import ... from ...」構文を使用すること。
-             - Next.jsの仕様に基づき、ファイル内で「useSearchParams()」を使用する場合は、プリレンダリング時のエラーを防ぐため、必ず該当するコンポーネントまたは呼び出し箇所を React の「<Suspense>」コンポーネント（import { Suspense } from 'react';）で適切にラップして囲むこと。
+             - 💡【最重要・再発防止】ソースコード、およびテストコード内（.test.tsx）において、Node.jsスタイルの「require()」によるインポートは一切禁止とする。外部モジュールや標準ライブラリ（fs, path等）の読み込みは、必ずTypeScript標準の「import ... from ...」構文を使用すること。
+             - 💡【プリレンダリングエラー対策】Next.jsのビルド仕様に基づき、ファイル内で「useSearchParams()」を使用する場合は、必ず該当するコンポーネントまたは呼び出し箇所を React の「<Suspense>」コンポーネント（import { Suspense } from 'react';）で適切にラップして囲むこと。
           `,
           responseMimeType: 'application/json',
           responseSchema: {
@@ -89,7 +89,7 @@ ${requirement}
               },
               testCode: {
                 type: Type.STRING,
-                description: "上記のコンポーネントに対するVitest＋Testing Libraryを用いたテストコード。正常系・異常系を網羅し、最新の構文で記述すること。"
+                description: "上記のコンポーネントに対するVitest＋Testing Libraryを用いたテストコード。最上部でrequire()を使わず、すべてimport文で記述すること。"
               }
             },
             required: ["sourceCode", "testCode"]

@@ -34,6 +34,9 @@ jobs:
 
       # 3. パッケージマネージャー(pnpm)のインストールとTypeScript実行環境の解決
       - name: Install Dependencies
+        # 💡 【重要】ステップ単位での環境変数に pnpm_config_... を指定して、ビルド制限を完璧に無効化する
+        env:
+          pnpm_config_only_allow_trusted_deps: 'false'
         run: |
           npm install -g pnpm
           
@@ -44,8 +47,9 @@ jobs:
           npm install -g tsx
           
           # 既存の package.json がある場合は、プロジェクトの依存関係もインストール
+          # 💡 オプションを廃止し、もっともエラーが起きないプレーンなコマンドに戻します
           if [ -f "package.json" ]; then
-            pnpm install --no-frozen-lockfile --no-only-allow-trusted-deps
+            pnpm install --no-frozen-lockfile
           else
             echo "🎵 package.json が直下にないため、個別インストールのみで進行します"
           fi

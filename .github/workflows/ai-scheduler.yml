@@ -48,7 +48,7 @@ jobs:
           
           # 既存の package.json がある場合は、プロジェクトの依存関係もインストール
           if [ -f "package.json" ]; then
-            pnpm install --no-frozen-lockfile
+            pnpm install --no-frozen-lockfile --no-only-allow-trusted-deps
           else
             echo "🎵 package.json が直下にないため、個別インストールのみで進行します"
           fi

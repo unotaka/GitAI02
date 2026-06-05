@@ -1,57 +1,58 @@
-import { render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
-import DisplayIdPage from './page';
-import { useSearchParams } from 'next/navigation';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import DisplayIdPage from '../app/AI02-4/page';
 
-// next/navigationモジュールをモックします。
+// next/navigation をモック
 vi.mock('next/navigation', () => ({
   useSearchParams: vi.fn(),
 }));
 
 describe('DisplayIdPage', () => {
-  test('クエリパラメータにIDが存在する場合、ログインIDを表示する', () => {
-    // useSearchParamsが特定のIDを返すようにモックします。
-    (useSearchParams as vi.Mock).mockReturnValue(new URLSearchParams('id=testUser123'));
+  const { useSearchParams } = require('next/navigation');
+
+  // useSearchParamsは同期的にモックされるため、通常fallbackは表示されないことを確認する
+  it('does not render loading fallback initially as useSearchParams is mocked synchronously', () => {
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams('id=testUser123'));
+    render(<DisplayIdPage />);
+    expect(screen.queryByText('IDを読み込み中...')).not.toBeInTheDocument();
+  });
+
+  it('displays the ID when present in search params', async () => {
+    const mockId = 'testUser123';
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams(`id=${mockId}`));
 
     render(<DisplayIdPage />);
 
-    // ヘッディングとIDが画面に表示されていることを確認します。
-    expect(screen.getByRole('heading', { name: 'ログインID' })).toBeInTheDocument();
-    expect(screen.getByText('testUser123')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('ログインID')).toBeInTheDocument();
+    });
+    expect(screen.getByText(mockId)).toBeInTheDocument();
+    expect(screen.getByText('これは、ログイン時に使用されたIDです。')).toBeInTheDocument();
     expect(screen.queryByText('IDが見つかりませんでした。')).not.toBeInTheDocument();
   });
 
-  test('クエリパラメータにIDが存在しない場合、「IDが見つかりませんでした。」と表示する', () => {
-    // useSearchParamsが空のSearchParamsを返すようにモックします。
-    (useSearchParams as vi.Mock).mockReturnValue(new URLSearchParams(''));
+  it('displays "IDが見つかりませんでした。" when ID is not present', async () => {
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams('name=value'));
 
     render(<DisplayIdPage />);
 
-    // ヘッディングとエラーメッセージが画面に表示されていることを確認します。
-    expect(screen.getByRole('heading', { name: 'ログインID' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('ログインID')).toBeInTheDocument();
+    });
     expect(screen.getByText('IDが見つかりませんでした。')).toBeInTheDocument();
-    expect(screen.queryByText(/testUser/)).not.toBeInTheDocument(); // IDが表示されていないことを確認
+    expect(screen.queryByText('これは、ログイン時に使用されたIDです。')).not.toBeInTheDocument();
   });
 
-  test('クエリパラメータにidキーがない場合、「IDが見つかりませんでした。」と表示する', () => {
-    // useSearchParamsがid以外のパラメータを持つSearchParamsを返すようにモックします。
-    (useSearchParams as vi.Mock).mockReturnValue(new URLSearchParams('otherParam=value'));
+  it('displays "IDが見つかりませんでした。" when ID is an empty string', async () => {
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams('id='));
 
     render(<DisplayIdPage />);
 
-    // ヘッディングとエラーメッセージが画面に表示されていることを確認します。
-    expect(screen.getByRole('heading', { name: 'ログインID' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('ログインID')).toBeInTheDocument();
+    });
     expect(screen.getByText('IDが見つかりませんでした。')).toBeInTheDocument();
-  });
-
-  test('初期読み込み中にSuspenseのフォールバックコンテンツを表示しない（同期的なモックのため）', () => {
-    // useSearchParamsがIDを返すようにモックします。
-    (useSearchParams as vi.Mock).mockReturnValue(new URLSearchParams('id=userLoaded'));
-
-    render(<DisplayIdPage />);
-
-    // useSearchParamsのモックが同期的に解決されるため、フォールバックが表示されないことを確認します。
-    expect(screen.queryByText('IDを読み込み中...')).not.toBeInTheDocument();
-    expect(screen.getByText('userLoaded')).toBeInTheDocument();
+    expect(screen.queryByText('これは、ログイン時に使用されたIDです。')).not.toBeInTheDocument();
+    expect(screen.queryByText('')).not.toBeInTheDocument(); // 空のIDが表示されないことを確認
   });
 });

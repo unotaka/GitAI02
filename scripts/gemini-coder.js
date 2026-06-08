@@ -1,12 +1,12 @@
 // scripts/gemini-coder.js
 const fs = require('fs');
-const path = require('path'); // 💡 パス操作を安全に行うために追加
+const path = require('path'); 
 const { GoogleGenAI, Type } = require('@google/genai');
 
-// 💡 大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
+// 大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// 💡 一時的な503や429エラーを回避するためのウェイト（待機）関数
+// 一時的な503や429エラーを回避するためのウェイト（待機）関数
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function main() {
@@ -17,7 +17,6 @@ async function main() {
   }
   const taskInfo = JSON.parse(fs.readFileSync('./task_info.json', 'utf8'));
   
-  // 💡 念のためdescriptionプロパティかSPECIFICATIONプロパティのどちらからでも仕様を引けるように安全弁を定義
   const requirement = taskInfo.description || taskInfo.SPECIFICATION || "仕様が定義されていません。";
   const taskId = taskInfo.TASK_ID;
 
@@ -45,9 +44,9 @@ ${requirement}
 
   console.log("🧠 Gemini にプロンプトを送信中...（思考中）");
 
-  // 3. API高負荷（503エラー等）対策のリトライループを実装
+  // 3. 💡【堅牢化のさらなる強化】最大5回、かつ段階的に待機時間を延ばすステップバックオフ・リトライ
   let response;
-  let maxRetries = 3;
+  let maxRetries = 5; // 💡 3回から5回に増やして粘り強くします
   let attempt = 0;
 
   while (attempt < maxRetries) {
@@ -76,8 +75,8 @@ ${requirement}
           5. ディレクトリ構成・インポート:
              - 外部コンポーネントやユーティリティをインポートする際は、相対パス（../../）ではなく、必ずパスエイリアス（@/components/...）を使用すること。
              - このファイルは直接ブラウザから閲覧されるページとなるため、最上部に必ず '"use client";' を付与してクライアントコンポーネントとして動作させること。
-             - 💡【最重要・再発防止】ソースコード、およびテストコード内（.test.tsx）において、Node.jsスタイルの「require()」によるインポートは一切禁止とする。外部モジュールや標準ライブラリ（fs, path等）の読み込みは、必ずTypeScript標準の「import ... from ...」構文を使用すること。
-             - 💡【プリレンダリングエラー対策】Next.jsのビルド仕様に基づき、ファイル内で「useSearchParams()」を使用する場合は、必ず該当するコンポーネントまたは呼び出し箇所を React の「<Suspense>」コンポーネント（import { Suspense } from 'react';）で適切にラップして囲むこと。
+             - ソースコード、およびテストコード内（.test.tsx）において、Node.jsスタイルの「require()」によるインポートは一切禁止とする。外部モジュールや標準ライブラリ（fs, path等）の読み込みは、必ずTypeScript標準の「import ... from ...」構文を使用すること。
+             - Next.jsのビルド仕様に基づき、ファイル内で「useSearchParams()」を使用する場合は、必ず該当するコンポーネントまたは呼び出し箇所を React の「<Suspense>」コンポーネント（import { Suspense } from 'react';）で適切にラップして囲むこと。
           `,
           responseMimeType: 'application/json',
           responseSchema: {
@@ -104,11 +103,13 @@ ${requirement}
       console.warn(`⚠️ Gemini APIが一時的に不安定です（試行 ${attempt}/${maxRetries}）: ${error.message}`);
       
       if (attempt >= maxRetries) {
-        throw error; // 3回ダメなら本当のエラーとして落とす
+        throw error; // 5回すべてダメだった場合はエラーとして終了
       }
       
-      console.log(`⏳ 4秒後に自動リトライします...`);
-      await sleep(4000); // 4秒待機（クールダウン）
+      // 💡 失敗するごとに「5秒 ➡️ 10秒 ➡️ 15秒 ➡️ 20秒」とサーバーが落ち着くまで待機時間を段階的に伸ばす
+      const waitTime = attempt * 5000; 
+      console.log(`⏳ サーバーの回復を待つため、${waitTime / 1000}秒後に自動リトライします...`);
+      await sleep(waitTime);
     }
   }
 

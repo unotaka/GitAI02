@@ -4,7 +4,7 @@ name: AI Notion Monitor & Developer Loop (Manual Trigger)
 on:
   workflow_dispatch: 
 
-# 💡 【新規追加】GitHub全体のNode.js 20廃止に伴い、実行基盤をNode.js 24に一足早く強制オプトインして警告を消す
+# 💡 GitHub全体のNode.js 20廃止に伴い、実行基盤をNode.js 24に一足早く強制オプトインして警告を消す
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -173,7 +173,7 @@ jobs:
           # リモートへタスクID名でプッシュ
           git push -u origin "$TASK_ID" --force
           
-          # GitHub CLI を使ってプルリクエストを作成
+          # GitHub CLI を使ってプルリクエストを作成（重複エラー回避の || true を確実に適用）
           gh pr create \
             --title "【Gemini自動生成】$TASK_ID" \
             --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。規約チェック（Lint）およびVitestテストは正常に通過しています。目視レビューをお願いします。" \
@@ -181,6 +181,7 @@ jobs:
             --head "$TASK_ID" || true
 
       # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを更新し、実装した仕様をマークダウンで追記
+      # 💡 修正点: invalid_json エラーを防ぐため、Node.jsのJSON.stringifyを用いた安全なクォートエスケープ方式に丸ごと差し替え
       - name: Update Notion Status and Append Markdown Specification
         if: env.TASK_ID != ''
         run: |
@@ -189,36 +190,49 @@ jobs:
           
           echo "📝 Notionのタスク（ページID: $PAGE_ID）のステータスおよび仕様を更新中..."
           
-          # 💡 Notionに追記するマークダウン形式のテキストをここで組み立てる
-          # ※改行コードやダブルクォーテーションをJSONに安全に埋め込むため、環境変数経由で処理します
-          export AI_SUMMARY="### 🤖 AI自動実装レポート (${TASK_ID})\n\n- **実装ステータス**: ✅ テスト＆規約チェック通過済み\n- **生成ファイル**: \`src/app/${TASK_ID}/page.tsx\`\n- **検証ファイル**: \`src/components/${TASK_ID}.test.tsx\`\n\n#### 📌 実装された主な仕様とコンテキスト\n1. **動的ルーティング対応**: URL \`/${TASK_ID}\` で直接画面を確認できるよう配慮。\n2. **Suspenseエラー対策**: Next.jsのプリレンダリングエラーを回避するため \`useSearchParams\` 周辺に \`<Suspense>\` を自動配置。\n3. **最新Next.js 15.5+ 準拠**: 脆弱性を回避した安全なESLintルールに適合。"
+          # 1. 改行入りのマークダウン生テキストを一時ファイルに出力
+          cat << 'EOF' > ai_summary.txt
+          ### 🤖 AI自動実装レポート (TASK_ID_PLACEHOLDER)
 
-          # 💡 PATCHリクエストを送信して、ステータスと「仕様」プロパティを同時に更新！
+          - **実装ステータス**: ✅ テスト＆規約チェック通過済み
+          - **生成ファイル**: `src/app/TASK_ID_PLACEHOLDER/page.tsx`
+          - **検証ファイル**: `src/components/TASK_ID_PLACEHOLDER.test.tsx`
+
+          #### 📌 実装された主な仕様とコンテキスト
+          1. **動的ルーティング対応**: URL `/TASK_ID_PLACEHOLDER` で直接画面を確認できるよう配慮。
+          2. **Suspenseエラー対策**: Next.jsのプリレンダリングエラーを回避するため `useSearchParams` 周辺に `<Suspense>` を自動配置。
+          3. **最新Next.js 15.5+ 準拠**: 脆弱性を回避した安全なESLintルールに適合。
+          EOF
+
+          # 2. プレースホルダーを実際のTASK_ID（AI02-3など）に置換
+          sed -i "s/TASK_ID_PLACEHOLDER/${TASK_ID}/g" ai_summary.txt
+
+          # 3. Node.jsの標準関数を呼び出し、テキスト全体の改行やダブルクォーテーションを完全無欠のJSON安全文字列に変形
+          JSON_SAFE_SUMMARY=$(node -e "const fs = require('fs'); console.log(JSON.stringify(fs.readFileSync('ai_summary.txt', 'utf8').trim()));")
+
+          # 4. PATCHリクエストを安全に送信
           curl -X PATCH "https://api.notion.com/v1/pages/$PAGE_ID" \
             -H "Authorization: Bearer ${{ secrets.NOTION_TOKEN }}" \
             -H "Content-Type: application/json" \
             -H "Notion-Version: 2022-06-28" \
-            --data "$(cat <<EOF
-            {
-              "properties": {
-                "ステータス": {
-                  "status": {
-                    "name": "Git格納済み"
+            --data "{
+              \"properties\": {
+                \"ステータス\": {
+                  \"status\": {
+                    \"name\": \"Git格納済み\"
                   }
                 },
-                "仕様": {
-                  "rich_text": [
+                \"仕様\": {
+                  \"rich_text\": [
                     {
-                      "type": "text",
-                      "text": {
-                        "content": \"$(echo "$AI_SUMMARY")\"
+                      \"type\": \"text\",
+                      \"text\": {
+                        \"content\": $JSON_SAFE_SUMMARY
                       }
                     }
                   ]
                 }
               }
-            }
-          EOF
-          )"
+            }"
           
           echo "🎉 すべての自動化プロセスとNotionへのマークダウン追記が正常に完了しました！"

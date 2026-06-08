@@ -4,11 +4,11 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
 /**
- * DisplayIdContent Component
+ * AI02-4Content Component
  * 検索パラメータからIDを取得し、画面中央に表示します。
  * IDが存在しない場合は、その旨を通知します。
  */
-function DisplayIdContent(): JSX.Element {
+function AI02-4Content(): JSX.Element {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
 
@@ -16,7 +16,7 @@ function DisplayIdContent(): JSX.Element {
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50 dark:bg-gray-900">
       <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl text-center md:p-12 lg:p-16 w-full max-w-md">
         <h1 className="text-3xl font-extrabold mb-6 md:text-4xl lg:text-5xl text-gray-800 dark:text-white">
-          ログインID
+          ログインID表示
         </h1>
         {id ? (
           <p className="text-5xl font-extrabold text-indigo-600 dark:text-indigo-400 break-words md:text-6xl lg:text-7xl leading-tight">
@@ -36,11 +36,11 @@ function DisplayIdContent(): JSX.Element {
 }
 
 /**
- * DisplayIdPage Component
- * useSearchParamsを使用するDisplayIdContentコンポーネントを
+ * AI02-4Page Component
+ * useSearchParamsを使用するAI02-4Contentコンポーネントを
  * Suspenseでラップしてエクスポートします。
  */
-export default function DisplayIdPage(): JSX.Element {
+export default function AI02-4Page(): JSX.Element {
   return (
     <Suspense
       fallback={
@@ -49,7 +49,7 @@ export default function DisplayIdPage(): JSX.Element {
         </div>
       }
     >
-      <DisplayIdContent />
+      <AI02-4Content />
     </Suspense>
   );
 }

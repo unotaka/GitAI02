@@ -178,7 +178,7 @@ jobs:
             --title "【Gemini自動生成】$TASK_ID" \
             --body "Notionの「Claude生成待ち」ステータスから自動起票されたPRです。規約チェック（Lint）およびVitestテストは正常に通過しています。目視レビューをお願いします。" \
             --base main \
-            --head "$TASK_ID"
+            --head "$TASK_ID" || true
 
       # 9. 【条件分岐】すべての工程が完了したら、Notionのステータスを更新し、実装した仕様をマークダウンで追記
       - name: Update Notion Status and Append Markdown Specification

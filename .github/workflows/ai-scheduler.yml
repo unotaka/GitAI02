@@ -189,19 +189,12 @@ jobs:
           
           echo "📝 Notionのタスク（ページID: $PAGE_ID）のステータスおよび仕様を更新中..."
           
-          # 💡 【超進化】Notionから「現在の仕様に入っている文字列」をAPI経由でリアルタイムに1回取得する
-          CURRENT_NOTION_DATA=$(curl -s -X GET "https://api.notion.com/v1/pages/$PAGE_ID" \
+          # 1. Notionから「現在の仕様に入っている文字列」をリアルタイムにGET取得
+          FETCH_DATA=$(curl -s -X GET "https://api.notion.com/v1/pages/$PAGE_ID" \
             -H "Authorization: Bearer ${{ secrets.NOTION_TOKEN }}" \
             -H "Notion-Version: 2022-06-28")
           
-          # 既存の仕様文字列をNode.jsを使って安全に抽出（無ければ空文字）
-          ORIGINAL_SPEC=$(echo '$CURRENT_NOTION_DATA' | node -e "
-            const data = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
-            const textArr = data.properties['仕様']?.rich_text || [];
-            console.log(textArr.map(t => t.plain_text).join(''));
-          ")
-
-          # 1. 改行入りのマークダウン生テキスト（レポート）を一時ファイルに出力
+          # 2. 改行入りのマークダウン生テキスト（レポート）を一時ファイルに出力
           cat << 'EOF' > ai_summary.txt
           ### 🤖 AI自動開発レポート (TASK_ID_PLACEHOLDER)
           - **更新ステータス**: ✅ 追加仕様の実装・テスト検証完了
@@ -210,16 +203,28 @@ jobs:
           ----------
           EOF
 
-          # 2. プレースホルダーを実際のTASK_ID（AI02-3など）に置換
+          # 3. プレースホルダーを実際のTASK_ID（AI02-3など）に置換
           sed -i "s/TASK_ID_PLACEHOLDER/${TASK_ID}/g" ai_summary.txt
 
-          # 3. AIのレポートの直後に、ユーザーが書いた元の仕様（ORIGINAL_SPEC）をドッキングさせる
-          echo -e "\n\n${ORIGINAL_SPEC}" >> ai_summary.txt
+          # 💡 4. 【確定回避】生の文字展開を避け、Bashの「export」を使ってNode.jsへ安全にデータを橋渡し
+          export RAW_NOTION_JSON="$FETCH_DATA"
+          
+          # 5. Node.jsで安全に「AIレポート + 元の仕様」を完全ドッキング＆JSON文字列化
+          JSON_SAFE_SUMMARY=$(node -e "
+            const fs = require('fs');
+            const aiReport = fs.readFileSync('ai_summary.txt', 'utf8');
+            
+            // 環境変数からNotionの生JSONを安全にパース
+            const notionData = JSON.parse(process.env.RAW_NOTION_JSON);
+            const textArr = notionData.properties['仕様']?.rich_text || [];
+            const originalSpec = textArr.map(t => t.plain_text).join('');
+            
+            // レポートの直後に元の仕様をドッキング
+            const fullContent = (aiReport + '\n\n' + originalSpec).trim();
+            console.log(JSON.stringify(fullContent));
+          ")
 
-          # 4. 全体をNode.jsで完全無欠のJSON安全文字列に変形
-          JSON_SAFE_SUMMARY=$(node -e "const fs = require('fs'); console.log(JSON.stringify(fs.readFileSync('ai_summary.txt', 'utf8').trim()));")
-
-          # 5. PATCHリクエストを送信して、元の仕様を汚さずに上部にレポートを上書きマージ！
+          # 6. PATCHリクエストを送信してカンバンを移動＆プロパティに追記
           curl -X PATCH "https://api.notion.com/v1/pages/$PAGE_ID" \
             -H "Authorization: Bearer ${{ secrets.NOTION_TOKEN }}" \
             -H "Content-Type: application/json" \

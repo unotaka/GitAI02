@@ -1,17 +1,18 @@
 // scripts/gemini-fixer.js
 const fs = require('fs');
+const path = require('path');
 const { GoogleGenAI, Type } = require('@google/genai');
 
-// 💡 修正点：こちらも同様に「new」をしっかりと付与します
+// 大文字の Class constructor に対して、必ず「new」を付与してインスタンス化します
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function main() {
   const taskInfo = JSON.parse(fs.readFileSync('./task_info.json', 'utf8'));
   const taskId = taskInfo.TASK_ID;
 
-  const targetDir = 'src/components';
-  const sourcePath = `${targetDir}/${taskId}.tsx`;
-  const testPath = `${targetDir}/${taskId}.test.tsx`;
+  // 💡 【同期修正】coder.js側の保存先（App Router 構造）と完全に一致させます
+  const sourcePath = path.join('src/app', taskId, 'page.tsx');
+  const testPath = path.join('src/components', `${taskId}.test.tsx`);
 
   if (!fs.existsSync(sourcePath) || !fs.existsSync(testPath)) {
     console.error(`🚨 エラー: 修正対象のファイルが見つかりません。(${sourcePath} または ${testPath})`);
@@ -52,9 +53,10 @@ async function main() {
       【絶対厳守コーディングルール】:
       1. 「any」型の使用は一切禁止（ESLintの最重要ルール）。適切な型またはインターフェースを定義すること。
       2. スタイリングは Tailwind CSS のみを使用し、インラインスタイルは禁止。
-      3. Next.jsのコンポーネントは通常の関数宣言型（export function Component() {}）で記述すること。
+      3. Next.jsのコンポーネントには「React.FC」は使用せず、通常の関数宣言型で最上部に '"use client";' を付与して記述すること。
       4. インポートの際はパスエイリアス（@/components/...）を使用すること。
       5. エラーの原因が「テストコード側の不備」である場合は、テストコード側を適切に修正すること。
+      6. Node.jsスタイルの「require()」によるインポートは一切禁止とする。必ず「import ... from ...」構文を使用すること。
       `,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -62,11 +64,11 @@ async function main() {
         properties: {
           sourceCode: {
             type: Type.STRING,
-            description: "修正・最適化を施した Next.js (App Router) のTypeScriptコード（.tsx）。ルールに完全準拠していること。"
+            description: "修正・最適化を施した Next.js (App Router) のTypeScriptコード（page.tsx）。最上部に '\"use client\";' が含まれ、export default function を持つこと。"
           },
           testCode: {
             type: Type.STRING,
-            description: "修正・最適化を施した Vitest のテストコード。不必要なエラーを起こさないよう、テストロジックを見見直すこと。"
+            description: "修正・最適化を施した Vitest のテストコード。最上部でrequire()を使わず、すべてimport文で記述すること。"
           }
         },
         required: ["sourceCode", "testCode"]

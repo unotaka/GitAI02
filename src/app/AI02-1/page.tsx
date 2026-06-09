@@ -22,6 +22,7 @@ export default function LoginPage(): JSX.Element {
       ...prevData,
       [name]: value,
     }));
+    setError(null); // 入力時にエラーをクリア
   };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {

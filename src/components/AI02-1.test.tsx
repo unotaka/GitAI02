@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import LoginPage from '@/app/login/page';
-import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import LoginPage from '@/app/AI02-1/page';
 
 // useRouterをモック
 const mockPush = vi.fn();
@@ -13,44 +12,77 @@ vi.mock('next/navigation', () => ({
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    mockPush.mockClear();
+    mockPush.mockClear(); // 各テストの前にモックをクリア
   });
 
-  it('renders login form correctly', () => {
+  it('renders the login form with initial disabled button', () => {
     render(<LoginPage />);
 
-    expect(screen.getByRole('heading', { name: /ログイン/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/ID入力フィールド/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/パスワード入力フィールド/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Login/i })).toBeInTheDocument();
-  });
-
-  it('login button is disabled when form is empty', () => {
-    render(<LoginPage />);
-    const loginButton = screen.getByRole('button', { name: /Login/i });
+    expect(screen.getByRole('heading', { name: 'ログイン' })).toBeInTheDocument();
+    expect(screen.getByLabelText('ID入力フィールド')).toBeInTheDocument();
+    expect(screen.getByLabelText('パスワード入力フィールド')).toBeInTheDocument();
+    
+    const loginButton = screen.getByRole('button', { name: 'Login' });
+    expect(loginButton).toBeInTheDocument();
     expect(loginButton).toBeDisabled();
   });
 
-  it('login button is enabled when form is filled', () => {
+  it('enables the login button when both fields are filled', () => {
     render(<LoginPage />);
-    const idInput = screen.getByLabelText(/ID入力フィールド/i);
-    const passwordInput = screen.getByLabelText(/パスワード入力フィールド/i);
-    const loginButton = screen.getByRole('button', { name: /Login/i });
 
-    fireEvent.change(idInput, { target: { value: 'testuser' } });
-    fireEvent.change(passwordInput, { target: { value: 'password' } });
+    const idInput = screen.getByLabelText('ID入力フィールド');
+    const passwordInput = screen.getByLabelText('パスワード入力フィールド');
+    const loginButton = screen.getByRole('button', { name: 'Login' });
 
-    expect(loginButton).not.toBeDisabled();
+    fireEvent.change(idInput, { target: { name: 'id', value: 'testuser' } });
+    expect(loginButton).toBeDisabled(); // パスワードがまだ空なので無効なまま
+
+    fireEvent.change(passwordInput, { target: { name: 'passwordHash', value: 'password' } });
+    expect(loginButton).toBeEnabled();
   });
 
-  it('displays error message on invalid login credentials', async () => {
+  it('disables the login button when a field is cleared', () => {
     render(<LoginPage />);
-    const idInput = screen.getByLabelText(/ID入力フィールド/i);
-    const passwordInput = screen.getByLabelText(/パスワード入力フィールド/i);
-    const loginButton = screen.getByRole('button', { name: /Login/i });
 
-    fireEvent.change(idInput, { target: { value: 'wronguser' } });
-    fireEvent.change(passwordInput, { target: { value: 'wrongpass' } });
+    const idInput = screen.getByLabelText('ID入力フィールド');
+    const passwordInput = screen.getByLabelText('パスワード入力フィールド');
+    const loginButton = screen.getByRole('button', { name: 'Login' });
+
+    fireEvent.change(idInput, { target: { name: 'id', value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { name: 'passwordHash', value: 'password' } });
+    expect(loginButton).toBeEnabled();
+
+    fireEvent.change(idInput, { target: { name: 'id', value: '' } });
+    expect(loginButton).toBeDisabled();
+  });
+
+  it('navigates to AI02-3 on successful login', async () => {
+    render(<LoginPage />);
+
+    const idInput = screen.getByLabelText('ID入力フィールド');
+    const passwordInput = screen.getByLabelText('パスワード入力フィールド');
+    const loginButton = screen.getByRole('button', { name: 'Login' });
+
+    fireEvent.change(idInput, { target: { name: 'id', value: 'testuser' } });
+    fireEvent.change(passwordInput, { target: { name: 'passwordHash', value: 'password' } });
+    fireEvent.click(loginButton);
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith('/AI02-3?id=testuser');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument(); // エラーメッセージが表示されていないことを確認
+  });
+
+  it('displays an error message on failed login', async () => {
+    render(<LoginPage />);
+
+    const idInput = screen.getByLabelText('ID入力フィールド');
+    const passwordInput = screen.getByLabelText('パスワード入力フィールド');
+    const loginButton = screen.getByRole('button', { name: 'Login' });
+
+    fireEvent.change(idInput, { target: { name: 'id', value: 'wronguser' } });
+    fireEvent.change(passwordInput, { target: { name: 'passwordHash', value: 'wrongpassword' } });
     fireEvent.click(loginButton);
 
     await waitFor(() => {
@@ -59,37 +91,26 @@ describe('LoginPage', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('navigates to /AI02-3 with ID on successful login', async () => {
+  it('clears the error message when input fields are changed after a failed login', async () => {
     render(<LoginPage />);
-    const idInput = screen.getByLabelText(/ID入力フィールド/i);
-    const passwordInput = screen.getByLabelText(/パスワード入力フィールド/i);
-    const loginButton = screen.getByRole('button', { name: /Login/i });
 
-    fireEvent.change(idInput, { target: { value: 'testuser' } });
-    fireEvent.change(passwordInput, { target: { value: 'password' } });
-    fireEvent.click(loginButton);
+    const idInput = screen.getByLabelText('ID入力フィールド');
+    const passwordInput = screen.getByLabelText('パスワード入力フィールド');
+    const loginButton = screen.getByRole('button', { name: 'Login' });
 
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/AI02-3?id=testuser');
-    });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('clears error message when input changes after an error', async () => {
-    render(<LoginPage />);
-    const idInput = screen.getByLabelText(/ID入力フィールド/i);
-    const passwordInput = screen.getByLabelText(/パスワード入力フィールド/i);
-    const loginButton = screen.getByRole('button', { name: /Login/i });
-
-    fireEvent.change(idInput, { target: { value: 'wronguser' } });
-    fireEvent.change(passwordInput, { target: { value: 'wrongpass' } });
+    // 失敗ログインをシミュレート
+    fireEvent.change(idInput, { target: { name: 'id', value: 'wronguser' } });
+    fireEvent.change(passwordInput, { target: { name: 'passwordHash', value: 'wrongpassword' } });
     fireEvent.click(loginButton);
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
 
-    fireEvent.change(idInput, { target: { value: 't' } });
+    // ID入力フィールドを変更
+    fireEvent.change(idInput, { target: { name: 'id', value: 'newinput' } });
+
+    // エラーメッセージが消えていることを確認
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
